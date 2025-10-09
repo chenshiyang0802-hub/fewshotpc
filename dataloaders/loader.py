@@ -58,7 +58,7 @@ def sample_pointcloud(data_path, num_point, pc_attribs, pc_augm, pc_augm_config,
     data = data[sampled_point_inds]
     xyz = data[:, 0:3]
     rgb = data[:, 3:6]
-    labels = data[:,6].astype(np.int)
+    labels = data[:,6].astype(np.int64)
 
     xyz_min = np.amin(xyz, axis=0)
     xyz -= xyz_min
@@ -144,6 +144,9 @@ class MyDataset(Dataset):
         print('MODE: {0} | Classes: {1}'.format(mode, self.classes))
         self.class2scans = self.dataset.class2scans
 
+        self.class2scans_query_all = {c: set() for c in self.classes}
+        self.class2scans_support_all = {c: set() for c in self.classes}
+
     def __len__(self):
         return self.num_episode
 
@@ -153,7 +156,11 @@ class MyDataset(Dataset):
         else:
             sampled_classes = np.random.choice(self.classes, self.n_way, replace=False)
 
-        support_ptclouds, support_masks, query_ptclouds, query_labels = self.generate_one_episode(sampled_classes)
+        support_ptclouds, support_masks, query_ptclouds, query_labels, class2scans_query_one_episode, class2scans_support_one_episode = self.generate_one_episode(sampled_classes)
+        for c, scans in class2scans_query_one_episode.items():
+            self.class2scans_query_all[c].update(scans)
+        for c, scans in class2scans_support_one_episode.items():
+            self.class2scans_support_all[c].update(scans)
 
         if self.mode == 'train' and self.phase == 'metatrain':
             remain_classes = list(set(self.classes) - set(sampled_classes))
@@ -186,6 +193,8 @@ class MyDataset(Dataset):
         support_masks = []
         query_ptclouds = []
         query_labels = []
+        class2scans_query_one_episode = {c: set() for c in sampled_classes}
+        class2scans_support_one_episode = {c: set() for c in sampled_classes}
 
         black_list = []  # to store the sampled scan names, in order to prevent sampling one scan several times...
         for sampled_class in sampled_classes:
@@ -217,13 +226,15 @@ class MyDataset(Dataset):
             query_labels.append(query_labels_one_way)
             support_ptclouds.append(support_ptclouds_one_way)
             support_masks.append(support_masks_one_way)
+            class2scans_query_one_episode[sampled_class].update(query_scannames)
+            class2scans_support_one_episode[sampled_class].update(support_scannames)
 
         support_ptclouds = np.stack(support_ptclouds, axis=0)
         support_masks = np.stack(support_masks, axis=0)
         query_ptclouds = np.concatenate(query_ptclouds, axis=0)
         query_labels = np.concatenate(query_labels, axis=0)
 
-        return support_ptclouds, support_masks, query_ptclouds, query_labels
+        return support_ptclouds, support_masks, query_ptclouds, query_labels, class2scans_query_one_episode, class2scans_support_one_episode
 
 
 def batch_train_task_collate(batch):
@@ -287,6 +298,10 @@ class MyTestDataset(Dataset):
                     write_episode(out_filename, data)
                     self.file_names.append(out_filename)
                     episode_ind += 1
+        
+        self.class2scans_query_all = dataset.class2scans_query_all
+        self.class2scans_support_all = dataset.class2scans_support_all  
+        self.class2scans = dataset.class2scans
 
     def __len__(self):
         return self.num_episode

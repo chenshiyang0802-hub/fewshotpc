@@ -107,7 +107,9 @@ if __name__ == '__main__':
         from runs.proto_train import train
         train(args)
     elif args.phase=='protoeval' or args.phase=='mptieval':
-        args.log_dir = args.model_checkpoint_path
+        args.log_dir = args.save_path + 'log_%s_%s_S%d_N%d_K%d_Att%d' % (args.phase, args.dataset, args.cvfold,
+                                                                         args.n_way, args.k_shot, 
+                                                                         args.use_attention)
         from runs.eval import eval
         eval(args)
     elif args.phase=='pretrain':

@@ -149,8 +149,7 @@ class MultiPrototypeTransductiveInference(nn.Module):
             farthest_seeds = feat[fps_index]
 
             # compute the point-to-seed distance
-            distances = F.pairwise_distance(feat[..., None], farthest_seeds.transpose(0, 1)[None, ...],
-                                            p=2)  # (n_points, n_prototypes)
+            distances = torch.cdist(feat, farthest_seeds, p=2)  # (n_points, n_prototypes)
 
             # hard assignment for each point
             assignments = torch.argmin(distances, dim=1)  # (n_points,)
@@ -249,7 +248,7 @@ class MultiPrototypeTransductiveInference(nn.Module):
         if method == 'cosine':
             knn_similarity = F.cosine_similarity(node_feat[:,None,:], knn_feat, dim=2)
         elif method == 'gaussian':
-            dist = F.pairwise_distance(node_feat[:,:,None], knn_feat.transpose(1,2), p=2)
+            dist = (node_feat[:, None, :] - knn_feat).square().sum(-1).sqrt()
             knn_similarity = torch.exp(-0.5*(dist/self.sigma)**2)
         else:
             raise NotImplementedError('Error! Distance computation method (%s) is unknown!' %method)

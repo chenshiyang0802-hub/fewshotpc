@@ -112,6 +112,25 @@ def eval(args):
                                  n_way=args.n_way, k_shot=args.k_shot, n_queries=args.n_queries,
                                  num_point=args.pc_npts, pc_attribs=args.pc_attribs,  mode='test')
     TEST_CLASSES = list(TEST_DATASET.classes)
+    
+    class2scans_query_all = TEST_DATASET.class2scans_query_all
+    class2scans_support_all = TEST_DATASET.class2scans_support_all
+    class2scans_test_only = {c: TEST_DATASET.class2scans[c] for c in TEST_CLASSES}
+    total = 0
+    used_query = 0
+    used_support = 0
+    for c in class2scans_test_only:
+        tot_c = len(class2scans_test_only[c])
+        use_query_c = len(class2scans_query_all[c])
+        use_support_c = len(class2scans_support_all[c])
+        total += tot_c
+        used_query += use_query_c
+        used_support += use_support_c
+    ratio_query = used_query / total if total > 0 else 0.0
+    ratio_support = used_support / total if total > 0 else 0.0
+    print(f'[COVERAGE] QUERY  used/total: {used_query}/{total} = {ratio_query:.4f}')
+    print(f'[COVERAGE] SUPPORT used/total: {used_support}/{total} = {ratio_support:.4f}')
+
     TEST_LOADER = DataLoader(TEST_DATASET, batch_size=1, shuffle=False, collate_fn=batch_test_task_collate)
 
     test_loss, mean_IoU = test_few_shot(TEST_LOADER, learner, logger, TEST_CLASSES)
