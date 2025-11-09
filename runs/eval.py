@@ -76,13 +76,14 @@ def test_few_shot(test_loader, learner, logger, test_classes):
     gt_label_total = []
     label2class_total = []
 
-    for batch_idx, (data, sampled_classes) in enumerate(test_loader):
+    for batch_idx, (data, sampled_classes, support_raw_labels) in enumerate(test_loader):
         query_label = data[-1]
 
         if torch.cuda.is_available():
             data = cast_cuda(data)
+            support_raw_labels = support_raw_labels.cuda()
 
-        query_pred, loss, accuracy = learner.test(data)
+        query_pred, loss, accuracy = learner.test(data, sampled_classes, support_raw_labels)
         total_loss += loss.detach().item()
 
         if (batch_idx+1) % 50 == 0:
@@ -101,17 +102,19 @@ def test_few_shot(test_loader, learner, logger, test_classes):
 def eval(args):
     logger = init_logger(args.log_dir, args)
 
-    if args.phase == 'protoeval':
-        learner = ProtoLearner(args, mode='test')
-    elif args.phase == 'mptieval':
-        learner = MPTILearner(args, mode='test')
-
     #Init dataset, dataloader
     TEST_DATASET = MyTestDataset(args.data_path, args.dataset, cvfold=args.cvfold,
                                  num_episode_per_comb=args.n_episode_test,
                                  n_way=args.n_way, k_shot=args.k_shot, n_queries=args.n_queries,
                                  num_point=args.pc_npts, pc_attribs=args.pc_attribs,  mode='test')
+    base_classes = TEST_DATASET.base_classes
+    all_classes = TEST_DATASET.all_classes
     TEST_CLASSES = list(TEST_DATASET.classes)
+
+    if args.phase == 'protoeval':
+        learner = ProtoLearner(args, mode='test')
+    elif args.phase == 'mptieval':
+        learner = MPTILearner(args, base_classes, all_classes, mode='test')
     
     class2scans_query_all = TEST_DATASET.class2scans_query_all
     class2scans_support_all = TEST_DATASET.class2scans_support_all

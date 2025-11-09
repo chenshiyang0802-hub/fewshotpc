@@ -2,8 +2,8 @@ GPU_ID=0
 
 DATASET='s3dis'
 SPLIT=0
-DATA_PATH='./datasets/S3DIS/blocks_bs1_s1'
-SAVE_PATH='./log_s3dis/'
+DATA_PATH='./datasets/S3DIS/scenes/blocks_bs1_s1'
+SAVE_PATH='./log_s3dis/log_s3dis_bg_v2/'
 
 NUM_POINTS=2048
 PC_ATTRIBS='xyzrgbXYZ'
@@ -16,10 +16,10 @@ PRETRAIN_CHECKPOINT='./log_s3dis/log_pretrain_s3dis_S0'
 N_WAY=2
 K_SHOT=1
 N_QUESIES=1
-N_TEST_EPISODES=100
+N_TEST_EPISODES=5 ## test
 
-NUM_ITERS=40000
-EVAL_INTERVAL=2000
+NUM_ITERS=20 ##test
+EVAL_INTERVAL=2 ##test
 LR=0.001
 DECAY_STEP=5000
 DECAY_RATIO=0.5
@@ -28,12 +28,14 @@ N_SUBPROTOTYPES=100
 K_CONNECT=200
 SIM_FUNCTION='gaussian'
 SIGMA=1
+BG_STRATEGY='target_complement'
 
 args=(--phase 'mptitrain' --dataset "${DATASET}" --cvfold $SPLIT
       --data_path  "$DATA_PATH" --save_path "$SAVE_PATH"
       --pretrain_checkpoint_path "$PRETRAIN_CHECKPOINT" --use_attention
       --n_subprototypes $N_SUBPROTOTYPES  --k_connect $K_CONNECT
       --dist_method "$SIM_FUNCTION" --sigma $SIGMA
+      --bg_strategy "$BG_STRATEGY"
       --pc_npts $NUM_POINTS --pc_attribs "$PC_ATTRIBS" --pc_augm
       --edgeconv_widths "$EDGECONV_WIDTHS" --dgcnn_k $K 
       --dgcnn_mlp_widths "$MLP_WIDTHS" --base_widths "$BASE_WIDTHS" 

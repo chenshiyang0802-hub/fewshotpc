@@ -21,9 +21,6 @@ def train(args):
     # os.system('cp models/mpti.py %s' % (args.log_dir))
     # os.system('cp models/dgcnn.py %s' % (args.log_dir))
 
-    # init model and optimizer
-    MPTI = MPTILearner(args)
-
     #Init datasets, dataloaders, and writer
     PC_AUGMENT_CONFIG = {'scale': args.pc_augm_scale,
                          'rot': args.pc_augm_rot,
@@ -43,19 +40,26 @@ def train(args):
                                   num_point=args.pc_npts, pc_attribs=args.pc_attribs)
     VALID_CLASSES = list(VALID_DATASET.classes)
 
+    base_classes = TRAIN_DATASET.classes
+    all_classes = TRAIN_DATASET.all_classes
+
     TRAIN_LOADER = DataLoader(TRAIN_DATASET, batch_size=1, collate_fn=batch_test_task_collate)
     VALID_LOADER = DataLoader(VALID_DATASET, batch_size=1, collate_fn=batch_test_task_collate)
+
+     # init model and optimizer
+    MPTI = MPTILearner(args, base_classes, all_classes, mode='train')
 
     WRITER = SummaryWriter(log_dir=args.log_dir)
 
     # train
     best_iou = 0
-    for batch_idx, (data, sampled_classes) in enumerate(TRAIN_LOADER):
+    for batch_idx, (data, sampled_classes, support_raw_labels) in enumerate(TRAIN_LOADER):
 
         if torch.cuda.is_available():
             data = cast_cuda(data)
+            support_raw_labels = support_raw_labels.cuda()
 
-        loss, accuracy = MPTI.train(data)
+        loss, accuracy = MPTI.train(data, sampled_classes, support_raw_labels)
 
         logger.cprint('==[Train] Iter: %d | Loss: %.4f |  Accuracy: %f  ==' % (batch_idx, loss, accuracy))
         WRITER.add_scalar('Train/loss', loss, batch_idx)

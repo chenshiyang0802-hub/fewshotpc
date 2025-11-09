@@ -84,6 +84,9 @@ if __name__ == '__main__':
     parser.add_argument('--k_connect', type=int, default=200,
                         help='Number of nearest neighbors to construct local-constrained affinity matrix')
     parser.add_argument('--sigma', type=float, default=1., help='hyeprparameter in gaussian similarity function')
+    parser.add_argument('--bg_strategy', type=str, default='target_complement',
+                        choices=['target_complement', 'episode_complement', 'base_complement', 'all_known_complement'],
+                        help='The strategy to define background points in the support set.')
 
     args = parser.parse_args()
 
@@ -94,9 +97,10 @@ if __name__ == '__main__':
 
     # Start trainer for pre-train, proto-train, proto-eval, mpti-train, mpti-test
     if args.phase=='mptitrain':
-        args.log_dir = args.save_path + 'log_mpti_%s_S%d_N%d_K%d_Att%d' % (args.dataset, args.cvfold,
-                                                                             args.n_way, args.k_shot,
-                                                                             args.use_attention)
+        args.log_dir = args.save_path + 'log_mpti_%s_S%d_N%d_K%d_Att%d_BG-%s' % (args.dataset, args.cvfold,
+                                                                                 args.n_way, args.k_shot,
+                                                                                 args.use_attention,
+                                                                                 args.bg_strategy)
         from runs.mpti_train import train
         train(args)
     elif args.phase=='prototrain':
@@ -107,9 +111,10 @@ if __name__ == '__main__':
         from runs.proto_train import train
         train(args)
     elif args.phase=='protoeval' or args.phase=='mptieval':
-        args.log_dir = args.save_path + 'log_%s_%s_S%d_N%d_K%d_Att%d' % (args.phase, args.dataset, args.cvfold,
-                                                                         args.n_way, args.k_shot, 
-                                                                         args.use_attention)
+        args.log_dir = args.save_path + 'log_%s_%s_S%d_N%d_K%d_Att%d_BG-%s' % (args.phase, args.dataset, args.cvfold,
+                                                                             args.n_way, args.k_shot,
+                                                                             args.use_attention,
+                                                                             args.bg_strategy)
         from runs.eval import eval
         eval(args)
     elif args.phase=='pretrain':

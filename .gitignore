@@ -1,3 +1,4 @@
 log_s3dis/
 datasets/
 *.pyc
+environment.yml

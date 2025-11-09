@@ -40,7 +40,7 @@ class BaseLearner(nn.Module):
 
 
 class MultiPrototypeTransductiveInference(nn.Module):
-    def __init__(self, args):
+    def __init__(self, args, base_classes, all_classes):
         super(MultiPrototypeTransductiveInference, self).__init__()
         # self.gpu_id = args.gpu_id
         self.n_way = args.n_way
@@ -54,6 +54,10 @@ class MultiPrototypeTransductiveInference(nn.Module):
 
         self.n_classes = self.n_way+1
 
+        self.bg_strategy = args.bg_strategy
+        self.base_classes = base_classes
+        self.all_classes = all_classes
+
         self.encoder = DGCNN(args.edgeconv_widths, args.dgcnn_mlp_widths, args.pc_in_dim, k=args.dgcnn_k)
         self.base_learner = BaseLearner(args.dgcnn_mlp_widths[-1], args.base_widths)
 
@@ -64,13 +68,15 @@ class MultiPrototypeTransductiveInference(nn.Module):
 
         self.feat_dim = args.edgeconv_widths[0][-1] + args.output_dim + args.base_widths[-1]
 
-    def forward(self, support_x, support_y, query_x, query_y):
+    def forward(self, support_x, support_y, query_x, query_y, support_raw_labels, sampled_classes):
         """
         Args:
             support_x: support point clouds with shape (n_way, k_shot, in_channels, num_points)
             support_y: support masks (foreground) with shape (n_way, k_shot, num_points)
             query_x: query point clouds with shape (n_queries, in_channels, num_points)
             query_y: query labels with shape (n_queries, num_points), each point \in {0,..., n_way}
+            support_raw_labels: original semantic labels for support points, shape: (n_way, k_shot, num_points)
+            sampled_classes: the classes used in this episode
         Return:
             query_pred: query point clouds predicted similarity, shape: (n_queries, n_way+1, num_points)
         """
@@ -81,7 +87,33 @@ class MultiPrototypeTransductiveInference(nn.Module):
         query_feat = query_feat.transpose(1,2).contiguous().view(-1, self.feat_dim) #(n_queries*num_points, feat_dim)
 
         fg_mask = support_y
-        bg_mask = torch.logical_not(support_y)
+        # bg_mask = torch.logical_not(support_y)
+
+        if self.bg_strategy == 'target_complement':
+            bg_mask = torch.logical_not(fg_mask)
+        elif self.bg_strategy == 'episode_complement':
+            episode_classes_mask = torch.zeros_like(support_raw_labels, dtype=torch.bool)
+            if torch.cuda.is_available():
+                episode_classes_mask = episode_classes_mask.cuda()
+            for novel_class_id in sampled_classes:
+                episode_classes_mask = torch.logical_or(episode_classes_mask, support_raw_labels == novel_class_id)
+            bg_mask = torch.logical_not(episode_classes_mask)
+        elif self.bg_strategy == 'base_complement':
+            base_classes_mask = torch.zeros_like(support_raw_labels, dtype=torch.bool)
+            if torch.cuda.is_available():
+                base_classes_mask = base_classes_mask.cuda()
+            for base_class_id in self.base_classes:
+                base_classes_mask = torch.logical_or(base_classes_mask, support_raw_labels == base_class_id)
+            bg_mask = torch.logical_not(base_classes_mask)
+        elif self.bg_strategy == 'all_known_complement':
+            all_known_classes_mask = torch.zeros_like(support_raw_labels, dtype=torch.bool)
+            if torch.cuda.is_available():
+                all_known_classes_mask = all_known_classes_mask.cuda()
+            for class_id in self.all_classes:
+                all_known_classes_mask = torch.logical_or(all_known_classes_mask, support_raw_labels == class_id)
+            bg_mask = torch.logical_not(all_known_classes_mask)
+        else:
+            raise ValueError(f"Unknown background strategy: {self.bg_strategy}")
 
         fg_prototypes, fg_labels = self.getForegroundPrototypes(support_feat, fg_mask, k=self.n_subprototypes)
         bg_prototype, bg_labels = self.getBackgroundPrototypes(support_feat, bg_mask, k=self.n_subprototypes)

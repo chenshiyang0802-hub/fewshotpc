@@ -12,10 +12,10 @@ from utils.checkpoint_util import load_pretrain_checkpoint, load_model_checkpoin
 
 
 class MPTILearner(object):
-    def __init__(self, args, mode='train'):
+    def __init__(self, args, base_classes, all_classes, mode='train'):
 
         # init model and optimizer
-        self.model = MultiPrototypeTransductiveInference(args)
+        self.model = MultiPrototypeTransductiveInference(args, base_classes, all_classes)
         print(self.model)
         if torch.cuda.is_available():
             self.model.cuda()
@@ -47,7 +47,7 @@ class MPTILearner(object):
         else:
             raise ValueError('Wrong GraphLearner mode (%s)! Option:train/test' %mode)
 
-    def train(self, data):
+    def train(self, data, sampled_classes, support_raw_labels):
         """
         Args:
             data: a list of torch tensors wit the following entries.
@@ -55,12 +55,14 @@ class MPTILearner(object):
             - support_y: support masks (foreground) with shape (n_way, k_shot, num_points)
             - query_x: query point clouds with shape (n_queries, in_channels, num_points)
             - query_y: query labels with shape (n_queries, num_points)
+            sampled_classes: the classes used in this episode
+            support_raw_labels: the original semantic labels for support points
         """
 
         [support_x, support_y, query_x, query_y] = data
         self.model.train()
 
-        query_logits, loss= self.model(support_x, support_y, query_x, query_y)
+        query_logits, loss = self.model(support_x, support_y, query_x, query_y, support_raw_labels, sampled_classes)
 
         self.optimizer.zero_grad()
         loss.backward()
@@ -75,19 +77,22 @@ class MPTILearner(object):
         return loss, accuracy
 
 
-    def test(self, data):
+    def test(self, data, sampled_classes, support_raw_labels):
         """
         Args:
-            support_x: support point clouds with shape (n_way, k_shot, in_channels, num_points)
-            support_y: support masks (foreground) with shape (n_way, k_shot, num_points), each point \in {0,1}.
-            query_x: query point clouds with shape (n_queries, in_channels, num_points)
-            query_y: query labels with shape (n_queries, num_points), each point \in {0,..., n_way}
+            data: a list of torch tensors with the following entries.
+                - support_x: support point clouds with shape (n_way, k_shot, in_channels, num_points)
+                - support_y: support masks (foreground) with shape (n_way, k_shot, num_points), each point \in {0,1}.
+                - query_x: query point clouds with shape (n_queries, in_channels, num_points)
+                - query_y: query labels with shape (n_queries, num_points), each point \in {0,..., n_way}
+            sampled_classes: the classes used in this episode
+            support_raw_labels: the original semantic labels for support points
         """
         [support_x, support_y, query_x, query_y] = data
         self.model.eval()
 
         with torch.no_grad():
-            logits, loss= self.model(support_x, support_y, query_x, query_y)
+            logits, loss = self.model(support_x, support_y, query_x, query_y, support_raw_labels, sampled_classes)
             pred = F.softmax(logits, dim=1).argmax(dim=1)
             correct = torch.eq(pred, query_y).sum().item()
             accuracy = correct / (query_y.shape[0]*query_y.shape[1])
