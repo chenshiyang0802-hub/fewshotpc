@@ -16,10 +16,10 @@ PRETRAIN_CHECKPOINT='./log_s3dis/log_pretrain_s3dis_S0'
 N_WAY=2
 K_SHOT=1
 N_QUESIES=1
-N_TEST_EPISODES=5 ## test
+N_TEST_EPISODES=100
 
-NUM_ITERS=20 ##test
-EVAL_INTERVAL=2 ##test
+NUM_ITERS=40000
+EVAL_INTERVAL=2000
 LR=0.001
 DECAY_STEP=5000
 DECAY_RATIO=0.5
@@ -28,7 +28,7 @@ N_SUBPROTOTYPES=100
 K_CONNECT=200
 SIM_FUNCTION='gaussian'
 SIGMA=1
-BG_STRATEGY='target_complement'
+BG_STRATEGY='all_known_complement'
 
 args=(--phase 'mptitrain' --dataset "${DATASET}" --cvfold $SPLIT
       --data_path  "$DATA_PATH" --save_path "$SAVE_PATH"

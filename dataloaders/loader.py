@@ -150,7 +150,7 @@ class MyDataset(Dataset):
             raise NotImplementedError('Unkown mode %s! [Options: train/test]' % mode)
         
         self.train_classes = self.dataset.train_classes
-        self.all_classes = list(range(self.dataset.classes))
+        self.all_classes = list(range(self.dataset.classes-1))
 
         print('MODE: {0} | Classes: {1}'.format(mode, self.classes))
         self.class2scans = self.dataset.class2scans
@@ -285,6 +285,9 @@ class MyTestDataset(Dataset):
         dataset = MyDataset(data_path, dataset_name, cvfold=cvfold, n_way=n_way, k_shot=k_shot, n_queries=n_queries,
                             mode='test', num_point=num_point, pc_attribs=pc_attribs, pc_augm=False)
         self.classes = dataset.classes
+
+        self.train_classes = dataset.train_classes
+        self.all_classes = dataset.all_classes
 
         if mode == 'valid':
             test_data_path = os.path.join(data_path, 'S_%d_N_%d_K_%d_episodes_%d_pts_%d_v2' % (

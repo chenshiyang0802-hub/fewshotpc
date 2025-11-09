@@ -107,7 +107,7 @@ def eval(args):
                                  num_episode_per_comb=args.n_episode_test,
                                  n_way=args.n_way, k_shot=args.k_shot, n_queries=args.n_queries,
                                  num_point=args.pc_npts, pc_attribs=args.pc_attribs,  mode='test')
-    base_classes = TEST_DATASET.base_classes
+    base_classes = TEST_DATASET.train_classes
     all_classes = TEST_DATASET.all_classes
     TEST_CLASSES = list(TEST_DATASET.classes)
 

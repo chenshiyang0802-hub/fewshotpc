@@ -40,7 +40,7 @@ def train(args):
                                   num_point=args.pc_npts, pc_attribs=args.pc_attribs)
     VALID_CLASSES = list(VALID_DATASET.classes)
 
-    base_classes = TRAIN_DATASET.classes
+    base_classes = TRAIN_DATASET.train_classes
     all_classes = TRAIN_DATASET.all_classes
 
     TRAIN_LOADER = DataLoader(TRAIN_DATASET, batch_size=1, collate_fn=batch_test_task_collate)

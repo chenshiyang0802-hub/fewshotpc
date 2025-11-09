@@ -1,8 +1,9 @@
-GPU_ID=0
+GPU_ID=3
 
 DATASET='s3dis'
 SPLIT=0
-DATA_PATH='./datasets/S3DIS/blocks_bs1_s1'
+DATA_PATH='./datasets/S3DIS/scenes/blocks_bs1_s1'
+SAVE_PATH='./log_s3dis/log_s3dis_bg_eval_v2/'
 
 NUM_POINTS=2048
 PC_ATTRIBS='xyzrgbXYZ'
@@ -11,7 +12,7 @@ MLP_WIDTHS='[512, 256]'
 K=20
 BASE_WIDTHS='[128, 64]'
 
-MODEL_CHECKPOINT='./log_s3dis/log_mpti_s3dis_S0_N2_K1_Att1'　`#MAKE SURE IT CORRESPONDS TO SPLIT, N_WAY, K_SHOT.`
+MODEL_CHECKPOINT="/home/slcheng/Documents/Project_shno/fewshotpc/log_s3dis/log_s3dis_bg_v2/log_mpti_s3dis_S0_N2_K1_Att1_BG-base_complement"
 N_WAY=2
 K_SHOT=1
 N_QUESIES=1
@@ -21,12 +22,14 @@ N_SUBPROTOTYPES=100
 K_CONNECT=200
 SIM_FUNCTION='gaussian'
 SIGMA=1
+BG_STRATEGY='base_complement'
 
 args=(--phase 'mptieval'  --dataset "${DATASET}" --cvfold $SPLIT
-      --data_path  "$DATA_PATH" --save_path "$MODEL_CHECKPOINT"
+      --data_path  "$DATA_PATH" --save_path "$SAVE_PATH"
       --model_checkpoint_path "$MODEL_CHECKPOINT"
       --n_subprototypes $N_SUBPROTOTYPES  --k_connect $K_CONNECT
       --dist_method "$SIM_FUNCTION" --sigma $SIGMA --use_attention
+      --bg_strategy "$BG_STRATEGY"
       --pc_npts $NUM_POINTS --pc_attribs "$PC_ATTRIBS"
       --edgeconv_widths "$EDGECONV_WIDTHS" --dgcnn_k $K 
       --dgcnn_mlp_widths "$MLP_WIDTHS" --base_widths "$BASE_WIDTHS" 
