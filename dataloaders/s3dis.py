@@ -29,8 +29,8 @@ class S3DISDataset(object):
         else:
             raise NotImplementedError('Unknown cvfold (%s). [Options: 0,1]' %cvfold)
 
-        all_classes = [i for i in range(0, self.classes-1)]
-        self.train_classes = [c for c in all_classes if c not in self.test_classes]
+        self.all_classes = [i for i in range(0, self.classes-1)]
+        self.train_classes = [c for c in self.all_classes if c not in self.test_classes]
 
         # print('train_class:{0}'.format(self.train_classes))
         # print('test_class:{0}'.format(self.test_classes))

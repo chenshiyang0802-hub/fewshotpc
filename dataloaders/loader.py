@@ -16,24 +16,30 @@ from torch.utils.data import Dataset
 
 
 def sample_K_pointclouds(data_path, num_point, pc_attribs, pc_augm, pc_augm_config,
-                         scan_names, sampled_class, sampled_classes, is_support=False):
+                         scan_names, sampled_class, sampled_classes, all_classes,
+                         classes_in_episode, bg_remove, is_support=False):
     '''sample K pointclouds and the corresponding labels for one class (one_way)'''
     ptclouds  = []
     labels = []
+    bg_masks = []
     for scan_name in scan_names:
-        ptcloud, label = sample_pointcloud(data_path, num_point, pc_attribs, pc_augm, pc_augm_config,
-                                           scan_name, sampled_classes, sampled_class, support=is_support)
+        ptcloud, label, bg_mask = sample_pointcloud(data_path, num_point, pc_attribs, pc_augm, pc_augm_config,
+                                           scan_name, sampled_classes, sampled_class, all_classes,
+                                           classes_in_episode, bg_remove, support=is_support)
         ptclouds.append(ptcloud)
         labels.append(label)
+        bg_masks.append(bg_mask)
 
     ptclouds = np.stack(ptclouds, axis=0)
     labels = np.stack(labels, axis=0)
+    bg_masks = np.stack(bg_masks, axis=0)
 
-    return ptclouds, labels
+    return ptclouds, labels, bg_masks
 
 
 def sample_pointcloud(data_path, num_point, pc_attribs, pc_augm, pc_augm_config, scan_name,
-                      sampled_classes, sampled_class=0, support=False, random_sample=False):
+                      sampled_classes, sampled_class, all_classes, classes_in_episode,
+                      bg_remove='none', support=False, random_sample=False):
     sampled_classes = list(sampled_classes)
     data = np.load(os.path.join(data_path, 'data', '%s.npy' %scan_name))
     N = data.shape[0] #number of points in this scan
@@ -84,7 +90,16 @@ def sample_pointcloud(data_path, num_point, pc_attribs, pc_augm, pc_augm_config,
             if label in sampled_classes:
                 groundtruth[i] = sampled_classes.index(label)+1
 
-    return ptcloud, groundtruth
+    if bg_remove == "sampled":
+        bg_mask = np.logical_not(np.isin(labels, sampled_classes))
+    elif bg_remove == "train":
+        bg_mask = np.logical_not(np.isin(labels, classes_in_episode))
+    elif bg_remove == "all":
+        bg_mask = np.logical_not(np.isin(labels, all_classes))
+    elif bg_remove == "none":
+        bg_mask = np.logical_not(labels==sampled_class)
+
+    return ptcloud, groundtruth, bg_mask
 
 
 def augment_pointcloud(P, pc_augm_config):
@@ -110,13 +125,14 @@ def augment_pointcloud(P, pc_augm_config):
 
 
 class MyDataset(Dataset):
-    def __init__(self, data_path, dataset_name, cvfold=0, num_episode=50000, n_way=3, k_shot=5, n_queries=1,
+    def __init__(self, data_path, dataset_name, cvfold=0, num_episode=50000, n_way=3, k_shot=5, n_queries=1, bg_remove='none',
                  phase=None, mode='train', num_point=4096, pc_attribs='xyz', pc_augm=False, pc_augm_config=None):
         super(MyDataset).__init__()
         self.data_path = data_path
         self.n_way = n_way
         self.k_shot = k_shot
         self.n_queries = n_queries
+        self.bg_remove = bg_remove
         self.num_episode = num_episode
         self.phase = phase
         self.mode = mode
@@ -134,18 +150,19 @@ class MyDataset(Dataset):
         else:
             raise NotImplementedError('Unknown dataset %s!' % dataset_name)
 
+        self.all_classes = np.array(self.dataset.all_classes)
         if mode == 'train':
-            self.classes = np.array(self.dataset.train_classes)
+            self.classes_in_episode = np.array(self.dataset.train_classes)
         elif mode == 'test':
-            self.classes = np.array(self.dataset.test_classes)
+            self.classes_in_episode = np.array(self.dataset.test_classes)
         else:
             raise NotImplementedError('Unkown mode %s! [Options: train/test]' % mode)
 
-        print('MODE: {0} | Classes: {1}'.format(mode, self.classes))
+        print('MODE: {0} | Classes: {1}'.format(mode, self.classes_in_episode))
         self.class2scans = self.dataset.class2scans
 
-        self.class2scans_query_all = {c: set() for c in self.classes}
-        self.class2scans_support_all = {c: set() for c in self.classes}
+        self.class2scans_query_all = {c: set() for c in self.classes_in_episode}
+        self.class2scans_support_all = {c: set() for c in self.classes_in_episode}
 
     def __len__(self):
         return self.num_episode
@@ -154,45 +171,51 @@ class MyDataset(Dataset):
         if n_way_classes is not None:
             sampled_classes = np.array(n_way_classes)
         else:
-            sampled_classes = np.random.choice(self.classes, self.n_way, replace=False)
+            sampled_classes = np.random.choice(self.classes_in_episode, self.n_way, replace=False)
 
-        support_ptclouds, support_masks, query_ptclouds, query_labels, class2scans_query_one_episode, class2scans_support_one_episode = self.generate_one_episode(sampled_classes)
+        support_ptclouds, support_masks, bg_masks, query_ptclouds, query_labels, \
+            class2scans_query_one_episode, class2scans_support_one_episode \
+                = self.generate_one_episode(sampled_classes, self.all_classes, self.classes_in_episode, self.bg_remove)
         for c, scans in class2scans_query_one_episode.items():
             self.class2scans_query_all[c].update(scans)
         for c, scans in class2scans_support_one_episode.items():
             self.class2scans_support_all[c].update(scans)
 
         if self.mode == 'train' and self.phase == 'metatrain':
-            remain_classes = list(set(self.classes) - set(sampled_classes))
+            remain_classes = list(set(self.classes_in_episode) - set(sampled_classes))
             try:
                 sampled_valid_classes = np.random.choice(np.array(remain_classes), self.n_way, replace=False)
             except:
                 raise NotImplementedError('Error! The number remaining classes is less than %d_way' %self.n_way)
 
-            valid_support_ptclouds, valid_support_masks, valid_query_ptclouds, \
-                                            valid_query_labels = self.generate_one_episode(sampled_valid_classes)
+            valid_support_ptclouds, valid_support_masks, valid_bg_masks, valid_query_ptclouds, \
+                                            valid_query_labels = self.generate_one_episode(sampled_valid_classes, self.all_classes, self.classes_in_episode, self.bg_remove)
 
             return support_ptclouds.astype(np.float32), \
                    support_masks.astype(np.int32), \
+                   bg_masks.astype(np.int32), \
                    query_ptclouds.astype(np.float32), \
                    query_labels.astype(np.int64), \
                    valid_support_ptclouds.astype(np.float32), \
                    valid_support_masks.astype(np.int32), \
+                   valid_bg_masks.astype(np.int32), \
                    valid_query_ptclouds.astype(np.float32), \
                    valid_query_labels.astype(np.int64)
         else:
             return support_ptclouds.astype(np.float32), \
                    support_masks.astype(np.int32), \
+                   bg_masks.astype(np.int32), \
                    query_ptclouds.astype(np.float32), \
                    query_labels.astype(np.int64), \
                    sampled_classes.astype(np.int32)
 
 
-    def generate_one_episode(self, sampled_classes):
+    def generate_one_episode(self, sampled_classes, all_classes, classes_in_episode, bg_remove):
         support_ptclouds = []
         support_masks = []
         query_ptclouds = []
         query_labels = []
+        bg_masks = []
         class2scans_query_one_episode = {c: set() for c in sampled_classes}
         class2scans_support_one_episode = {c: set() for c in sampled_classes}
 
@@ -206,54 +229,64 @@ class MyDataset(Dataset):
             query_scannames = selected_scannames[:self.n_queries]
             support_scannames = selected_scannames[self.n_queries:]
 
-            query_ptclouds_one_way, query_labels_one_way = sample_K_pointclouds(self.data_path, self.num_point,
+            query_ptclouds_one_way, query_labels_one_way, bg_masks_one_way = sample_K_pointclouds(self.data_path, self.num_point,
                                                                                 self.pc_attribs, self.pc_augm,
                                                                                 self.pc_augm_config,
                                                                                 query_scannames,
                                                                                 sampled_class,
                                                                                 sampled_classes,
+                                                                                all_classes,
+                                                                                classes_in_episode,
+                                                                                bg_remove,
                                                                                 is_support=False)
 
-            support_ptclouds_one_way, support_masks_one_way = sample_K_pointclouds(self.data_path, self.num_point,
+            support_ptclouds_one_way, support_masks_one_way, bg_masks_one_way = sample_K_pointclouds(self.data_path, self.num_point,
                                                                                 self.pc_attribs, self.pc_augm,
                                                                                 self.pc_augm_config,
                                                                                 support_scannames,
                                                                                 sampled_class,
                                                                                 sampled_classes,
+                                                                                all_classes,
+                                                                                classes_in_episode,
+                                                                                bg_remove,
                                                                                 is_support=True)
 
             query_ptclouds.append(query_ptclouds_one_way)
             query_labels.append(query_labels_one_way)
             support_ptclouds.append(support_ptclouds_one_way)
             support_masks.append(support_masks_one_way)
+            bg_masks.append(bg_masks_one_way)
             class2scans_query_one_episode[sampled_class].update(query_scannames)
             class2scans_support_one_episode[sampled_class].update(support_scannames)
 
         support_ptclouds = np.stack(support_ptclouds, axis=0)
         support_masks = np.stack(support_masks, axis=0)
+        bg_masks = np.stack(bg_masks, axis=0)
         query_ptclouds = np.concatenate(query_ptclouds, axis=0)
         query_labels = np.concatenate(query_labels, axis=0)
 
-        return support_ptclouds, support_masks, query_ptclouds, query_labels, class2scans_query_one_episode, class2scans_support_one_episode
+        return support_ptclouds, support_masks, bg_masks, query_ptclouds, query_labels, class2scans_query_one_episode, class2scans_support_one_episode
 
 
 def batch_train_task_collate(batch):
-    task_train_support_ptclouds, task_train_support_masks, task_train_query_ptclouds, task_train_query_labels, \
-    task_valid_support_ptclouds, task_valid_support_masks, task_valid_query_ptclouds, task_valid_query_labels = list(zip(*batch))
+    task_train_support_ptclouds, task_train_support_masks, task_train_bg_masks, task_train_query_ptclouds, task_train_query_labels, \
+    task_valid_support_ptclouds, task_valid_support_masks, task_valid_bg_masks, task_valid_query_ptclouds, task_valid_query_labels = list(zip(*batch))
 
     task_train_support_ptclouds = np.stack(task_train_support_ptclouds)
     task_train_support_masks = np.stack(task_train_support_masks)
+    task_train_bg_masks = np.stack(task_train_bg_masks)
     task_train_query_ptclouds = np.stack(task_train_query_ptclouds)
     task_train_query_labels = np.stack(task_train_query_labels)
     task_valid_support_ptclouds = np.stack(task_valid_support_ptclouds)
     task_valid_support_masks = np.stack(task_valid_support_masks)
+    task_valid_bg_masks = np.stack(task_valid_bg_masks)
     task_valid_query_ptclouds = np.array(task_valid_query_ptclouds)
     task_valid_query_labels = np.stack(task_valid_query_labels)
 
     data = [torch.from_numpy(task_train_support_ptclouds).transpose(3,4), torch.from_numpy(task_train_support_masks),
-            torch.from_numpy(task_train_query_ptclouds).transpose(2,3), torch.from_numpy(task_train_query_labels),
+            torch.from_numpy(task_train_bg_masks), torch.from_numpy(task_train_query_ptclouds).transpose(2,3), torch.from_numpy(task_train_query_labels),
             torch.from_numpy(task_valid_support_ptclouds).transpose(3,4), torch.from_numpy(task_valid_support_masks),
-            torch.from_numpy(task_valid_query_ptclouds).transpose(2,3), torch.from_numpy(task_valid_query_labels)]
+            torch.from_numpy(task_valid_bg_masks), torch.from_numpy(task_valid_query_ptclouds).transpose(2,3), torch.from_numpy(task_valid_query_labels)]
 
     return data
 
@@ -261,20 +294,20 @@ def batch_train_task_collate(batch):
 ################################################ Static Testing Dataset ################################################
 
 class MyTestDataset(Dataset):
-    def __init__(self, data_path, dataset_name, cvfold=0, num_episode_per_comb=100, n_way=3, k_shot=5, n_queries=1,
+    def __init__(self, data_path, dataset_name, cvfold=0, num_episode_per_comb=100, n_way=3, k_shot=5, n_queries=1, bg_remove='none',
                        num_point=4096, pc_attribs='xyz', mode='valid'):
         super(MyTestDataset).__init__()
 
-        dataset = MyDataset(data_path, dataset_name, cvfold=cvfold, n_way=n_way, k_shot=k_shot, n_queries=n_queries,
+        dataset = MyDataset(data_path, dataset_name, cvfold=cvfold, n_way=n_way, k_shot=k_shot, n_queries=n_queries, bg_remove=bg_remove,
                             mode='test', num_point=num_point, pc_attribs=pc_attribs, pc_augm=False)
-        self.classes = dataset.classes
+        self.classes_in_episode = dataset.classes_in_episode
 
         if mode == 'valid':
-            test_data_path = os.path.join(data_path, 'S_%d_N_%d_K_%d_episodes_%d_pts_%d' % (
-                                                    cvfold, n_way, k_shot, num_episode_per_comb, num_point))
-        elif mode == 'test':
-            test_data_path = os.path.join(data_path, 'S_%d_N_%d_K_%d_test_episodes_%d_pts_%d' % (
-                                                    cvfold, n_way, k_shot, num_episode_per_comb, num_point))
+            test_data_path = os.path.join(data_path, 'S_%d_N_%d_K_%d_bg_%s_episodes_%d_pts_%d' % (
+                                                    cvfold, n_way, k_shot, bg_remove, num_episode_per_comb, num_point))
+        elif mode == 'test': 
+            test_data_path = os.path.join(data_path, 'S_%d_N_%d_K_%d_bg_%s_test_episodes_%d_pts_%d' % (
+                                                    cvfold, n_way, k_shot, bg_remove, num_episode_per_comb, num_point))
         else:
             raise NotImplementedError('Mode (%s) is unknown!' %mode)
 
@@ -285,7 +318,7 @@ class MyTestDataset(Dataset):
             print('Test dataset (%s) does not exist...\n Constructing...' %test_data_path)
             os.mkdir(test_data_path)
 
-            class_comb = list(combinations(self.classes, n_way))  # [(),(),(),...]
+            class_comb = list(combinations(self.classes_in_episode, n_way))  # [(),(),(),...]
             self.num_episode = len(class_comb) * num_episode_per_comb
 
             episode_ind = 0
@@ -312,19 +345,20 @@ class MyTestDataset(Dataset):
 
 
 def batch_test_task_collate(batch):
-    batch_support_ptclouds, batch_support_masks, batch_query_ptclouds, batch_query_labels, batch_sampled_classes = batch[0]
+    batch_support_ptclouds, batch_support_masks, batch_bg_masks, batch_query_ptclouds, batch_query_labels, batch_sampled_classes = batch[0]
 
     data = [torch.from_numpy(batch_support_ptclouds).transpose(2,3), torch.from_numpy(batch_support_masks),
-            torch.from_numpy(batch_query_ptclouds).transpose(1,2), torch.from_numpy(batch_query_labels.astype(np.int64))]
+            torch.from_numpy(batch_bg_masks), torch.from_numpy(batch_query_ptclouds).transpose(1,2), torch.from_numpy(batch_query_labels.astype(np.int64))]
 
     return data, batch_sampled_classes
 
 
 def write_episode(out_filename, data):
-    support_ptclouds, support_masks, query_ptclouds, query_labels, sampled_classes = data
+    support_ptclouds, support_masks, bg_masks, query_ptclouds, query_labels, sampled_classes = data
     data_file = h5.File(out_filename, 'w')
     data_file.create_dataset('support_ptclouds', data=support_ptclouds, dtype='float32')
     data_file.create_dataset('support_masks', data=support_masks, dtype='int32')
+    data_file.create_dataset('bg_masks', data=bg_masks, dtype='int32')
     data_file.create_dataset('query_ptclouds', data=query_ptclouds, dtype='float32')
     data_file.create_dataset('query_labels', data=query_labels, dtype='int64')
     data_file.create_dataset('sampled_classes', data=sampled_classes, dtype='int32')
@@ -337,11 +371,12 @@ def read_episode(file_name):
     data_file = h5.File(file_name, 'r')
     support_ptclouds = data_file['support_ptclouds'][:]
     support_masks = data_file['support_masks'][:]
+    bg_masks = data_file['bg_masks'][:]
     query_ptclouds = data_file['query_ptclouds'][:]
     query_labels = data_file['query_labels'][:]
     sampled_classes = data_file['sampled_classes'][:]
 
-    return support_ptclouds, support_masks, query_ptclouds, query_labels, sampled_classes
+    return support_ptclouds, support_masks, bg_masks, query_ptclouds, query_labels, sampled_classes
 
 
 

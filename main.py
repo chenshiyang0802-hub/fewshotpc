@@ -49,6 +49,7 @@ if __name__ == '__main__':
     parser.add_argument('--n_queries', type=int, default=1, help='Number of queries for each class')
     parser.add_argument('--n_episode_test', type=int, default=100,
                         help='Number of episode per configuration during testing')
+    parser.add_argument('--bg_remove', choices=['sampled', 'train', 'all', 'none'], help='Background setting')
 
     # Point cloud processing
     parser.add_argument('--pc_npts', type=int, default=2048, help='Number of input points for PointNet.')
@@ -94,9 +95,9 @@ if __name__ == '__main__':
 
     # Start trainer for pre-train, proto-train, proto-eval, mpti-train, mpti-test
     if args.phase=='mptitrain':
-        args.log_dir = args.save_path + 'log_mpti_%s_S%d_N%d_K%d_Att%d' % (args.dataset, args.cvfold,
+        args.log_dir = args.save_path + 'log_mpti_%s_S%d_N%d_K%d_Att%d_bg_%s' % (args.dataset, args.cvfold,
                                                                              args.n_way, args.k_shot,
-                                                                             args.use_attention)
+                                                                             args.use_attention, args.bg_remove)
         from runs.mpti_train import train
         train(args)
     elif args.phase=='prototrain':
@@ -107,9 +108,9 @@ if __name__ == '__main__':
         from runs.proto_train import train
         train(args)
     elif args.phase=='protoeval' or args.phase=='mptieval':
-        args.log_dir = args.save_path + 'log_%s_%s_S%d_N%d_K%d_Att%d' % (args.phase, args.dataset, args.cvfold,
-                                                                         args.n_way, args.k_shot, 
-                                                                         args.use_attention)
+        args.log_dir = args.save_path + 'log_%s_%s_S%d_N%d_K%d_Att%d_bg_%s' % (args.phase, args.dataset, args.cvfold,
+                                                                         args.n_way, args.k_shot,
+                                                                         args.use_attention, args.bg_remove)
         from runs.eval import eval
         eval(args)
     elif args.phase=='pretrain':

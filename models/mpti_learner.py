@@ -19,7 +19,6 @@ class MPTILearner(object):
         print(self.model)
         if torch.cuda.is_available():
             self.model.cuda()
-
         if mode=='train':
             if args.use_attention:
                 self.optimizer = torch.optim.Adam(
@@ -53,14 +52,15 @@ class MPTILearner(object):
             data: a list of torch tensors wit the following entries.
             - support_x: support point clouds with shape (n_way, k_shot, in_channels, num_points)
             - support_y: support masks (foreground) with shape (n_way, k_shot, num_points)
+            - bg_masks: background masks with shape (n_way, k_shot, num_points)
             - query_x: query point clouds with shape (n_queries, in_channels, num_points)
             - query_y: query labels with shape (n_queries, num_points)
         """
 
-        [support_x, support_y, query_x, query_y] = data
+        [support_x, support_y, bg_masks, query_x, query_y] = data
         self.model.train()
 
-        query_logits, loss= self.model(support_x, support_y, query_x, query_y)
+        query_logits, loss= self.model(support_x, support_y, bg_masks, query_x, query_y)
 
         self.optimizer.zero_grad()
         loss.backward()
@@ -80,14 +80,15 @@ class MPTILearner(object):
         Args:
             support_x: support point clouds with shape (n_way, k_shot, in_channels, num_points)
             support_y: support masks (foreground) with shape (n_way, k_shot, num_points), each point \in {0,1}.
+            bg_masks: background masks with shape (n_way, k_shot, num_points), each point \in {0,1}.
             query_x: query point clouds with shape (n_queries, in_channels, num_points)
             query_y: query labels with shape (n_queries, num_points), each point \in {0,..., n_way}
         """
-        [support_x, support_y, query_x, query_y] = data
+        [support_x, support_y, bg_masks, query_x, query_y] = data
         self.model.eval()
 
         with torch.no_grad():
-            logits, loss= self.model(support_x, support_y, query_x, query_y)
+            logits, loss= self.model(support_x, support_y, bg_masks, query_x, query_y)
             pred = F.softmax(logits, dim=1).argmax(dim=1)
             correct = torch.eq(pred, query_y).sum().item()
             accuracy = correct / (query_y.shape[0]*query_y.shape[1])

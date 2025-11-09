@@ -64,11 +64,12 @@ class MultiPrototypeTransductiveInference(nn.Module):
 
         self.feat_dim = args.edgeconv_widths[0][-1] + args.output_dim + args.base_widths[-1]
 
-    def forward(self, support_x, support_y, query_x, query_y):
+    def forward(self, support_x, support_y, bg_masks, query_x, query_y):
         """
         Args:
             support_x: support point clouds with shape (n_way, k_shot, in_channels, num_points)
             support_y: support masks (foreground) with shape (n_way, k_shot, num_points)
+            bg_masks: background masks with shape (n_way, k_shot, num_points)
             query_x: query point clouds with shape (n_queries, in_channels, num_points)
             query_y: query labels with shape (n_queries, num_points), each point \in {0,..., n_way}
         Return:
@@ -81,7 +82,7 @@ class MultiPrototypeTransductiveInference(nn.Module):
         query_feat = query_feat.transpose(1,2).contiguous().view(-1, self.feat_dim) #(n_queries*num_points, feat_dim)
 
         fg_mask = support_y
-        bg_mask = torch.logical_not(support_y)
+        bg_mask = bg_masks
 
         fg_prototypes, fg_labels = self.getForegroundPrototypes(support_feat, fg_mask, k=self.n_subprototypes)
         bg_prototype, bg_labels = self.getBackgroundPrototypes(support_feat, bg_mask, k=self.n_subprototypes)

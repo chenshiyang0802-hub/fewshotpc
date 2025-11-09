@@ -109,9 +109,9 @@ def eval(args):
     #Init dataset, dataloader
     TEST_DATASET = MyTestDataset(args.data_path, args.dataset, cvfold=args.cvfold,
                                  num_episode_per_comb=args.n_episode_test,
-                                 n_way=args.n_way, k_shot=args.k_shot, n_queries=args.n_queries,
+                                 n_way=args.n_way, k_shot=args.k_shot, n_queries=args.n_queries, bg_remove=args.bg_remove,
                                  num_point=args.pc_npts, pc_attribs=args.pc_attribs,  mode='test')
-    TEST_CLASSES = list(TEST_DATASET.classes)
+    TEST_CLASSES = list(TEST_DATASET.classes_in_episode)
     
     class2scans_query_all = TEST_DATASET.class2scans_query_all
     class2scans_support_all = TEST_DATASET.class2scans_support_all
